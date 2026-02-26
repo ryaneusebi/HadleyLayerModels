@@ -22,7 +22,6 @@ Date: 2026-02-26
 
 import numpy as np
 from numpy import sin, cos, pi, tan
-import matplotlib.pyplot as plt
 import xarray as xr
 import argparse
 from multiprocessing import Pool
@@ -37,7 +36,9 @@ cp = 1005  # specific heat at constant pressure for dry air
 
 def run_hadley(args):
 
-   y0, epsu, taus, tauf, delz, delh, delta, H, omega_rel = args
+   phi0, epsu, taus, tauf, delz, delh, delta, H, omega_rel = args
+
+   
 
 
    # Set up meridional grid
@@ -87,12 +88,12 @@ def run_hadley(args):
 
    # increase drag in meridional momentum equation 
    # for high phi0 simulations for stability
-   if y0 > np.radians(19):
+   if phi0 > 19:
       vdrag = 2e-5
 
    # Define RCE theta profile (th_equil) based on Eusebi et al. (2026)
    phi = np.degrees(yu)
-   th_equil = re_multi_plevel(phi, np.degrees(y0), delh, tavg, pmin=ptop, pmax=ps)
+   th_equil = re_multi_plevel(phi, phi0, delh, tavg, pmin=ptop, pmax=ps)
    th_equil = np.mean(th_equil, axis=1)  # average over depth of troposphere
 
    # set to a flat profile for |y|>y1 using array logic
@@ -112,7 +113,7 @@ def run_hadley(args):
    th_equil[th_equil<200] = 200
 
    # for latitudinally varying surface relaxation timescale, if tauf differs from taus
-   tau_w = np.exp(-(yu-y0)**2/(2*np.radians(20)**2))  # weighting for conversion from taus to tauf
+   tau_w = np.exp(-(yu-np.radians(phi0))**2/(2*np.radians(20)**2))  # weighting for conversion from taus to tauf
    tau = tau_w*taus + (1-tau_w)*tauf
    tau = tau*86400  # convert days to seconds
 
@@ -280,8 +281,19 @@ def run_hadley(args):
             v3 = v2
             vbar = 0*v1
 
-   # When time integration is complete, return the final states
-   return (u3, v3, th3)
+   
+   # Create xarray dataset with final results (on meridional grid with points yu)
+   ds = xr.Dataset({
+       'u': (['lat'], u3), 
+       'theta': (['lat'], th3)
+   }, coords={'lat': np.degrees(yu), 'phi0': phi0})
+   
+   # Create v DataArray on staggered grid (yv) and interpolate to regular grid (yu)
+   v = xr.DataArray(v3, dims=['lat_v'], coords={'lat_v': np.degrees(yv)}).interp(lat_v=ds.lat)
+   ds['v'] = v
+
+   # Return dataset of results
+   return ds
 
 
 def axisymm_hadley_1p5_layer(epsu, taus, tauf, delz, delh, delta, H, omega_rel):
@@ -315,29 +327,22 @@ def axisymm_hadley_1p5_layer(epsu, taus, tauf, delz, delh, delta, H, omega_rel):
    """
 
    ### Set phi0 array to calculate Hadley circulations for
-   phi0arr_deg = np.array([0, 20])
-   phi0arr = np.radians(phi0arr_deg)  # radians
+   phi0s = np.array([0, 20])
 
-   ### Loop over y0 values
+   ### Loop over phi0 values
    # done with multiprocessing to speed up calculation
-   args = ((phi0, epsu, taus, tauf, delz, delh, delta, H, omega_rel) for phi0 in phi0arr)
-   with Pool(processes=len(phi0arr)) as pool:
+   args = ((phi0, epsu, taus, tauf, delz, delh, delta, H, omega_rel) for phi0 in phi0s)
+   with Pool(processes=len(phi0s)) as pool:
       # Map the function over the range of tasks
       results = pool.map(run_hadley, args)
       
-   uout = np.vstack([result[0] for result in results])
-   vout = np.vstack([result[1] for result in results])
-   thout = np.vstack([result[2] for result in results])
-
-   ds = xr.DataArray(uout, dims=['phi0', 'lat'], coords={'phi0':y0arr, 'lat':np.degrees(yu)}).rename('u')
-   ds['v'] = xr.DataArray(vout, dims=['phi0', 'lat'], coords={'phi0':y0arr, 'lat':np.degrees(yv)}).interp(lat=ds.lat)
-   ds['theta'] = xr.DataArray(thout, dims=['phi0', 'lat'], coords={'phi0':y0arr, 'lat':np.degrees(yu)})
+   ds = xr.concat(results, dim='phi0')
 
    # Get streamfunction in units kg / s
-   psi = -ds['u'] * 2 * np.pi * Re * np.cos(np.radians(ds.lat)) * delta / g
+   psi = -ds['v'] * 2 * np.pi * Re * np.cos(np.radians(ds.lat)) * delta / g
 
    # Get heat transport by circulation in units W
-   heatflux = psi * delz * cp
+   heatflux = -psi * delz * cp
 
    ds['psi'] = psi
    ds['heatflux'] = heatflux
