@@ -8,6 +8,8 @@ Schneider & Lindzen (1988), but it includes the vertical momentum advection term
 in the zonal momentum equation. The code for this model is based on code written
 by Timothy Cronin for the model described in Sobel & Schneider (2009).
 
+See the README.md for more information.
+
 References:
 ----------
 - Eusebi & Schneider (2026)
@@ -26,7 +28,6 @@ import xarray as xr
 import argparse
 from multiprocessing import Pool
 import sys
-sys.path.append('/resnick/groups/esm/reusebi/thesis/1D_HadleyModel')
 from re_profiles import re_multi_plevel
 
 Re = 6356000
@@ -138,7 +139,7 @@ def run_hadley(args):
    vbar = 0*v1
    thbar = 0*th1
 
-   # Set up gross stability:
+   # Construct gross stability profile. Modify this line to make it vary with latitude.
    delz = v2*0 + delz
 
    ### Integration in time
