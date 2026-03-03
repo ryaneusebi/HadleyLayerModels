@@ -39,23 +39,25 @@ def run_hadley(args):
     ngu = len(yu)           #               number of grid points for u and theta
     ngv = ngu + 1           #               number of grid points for v
     dyi = 1/dy              # 1/m           inverse grid spacing
-    y1 = np.radians(80)     # rad           meridional location beyond which differential forcing vanishes
+    y1 = np.radians(83)     # rad           meridional location beyond which differential forcing vanishes
 
     # Parameters from Table 1 of SS09
     # name      value         units            description
-    kv = 7786               # m^2/s         diffusivity on v (meridional velocity) - unused in current implementation
     tavg = 310              # K             reference temperature for RCE profile
     omega = 2*np.pi/86400 * omega_rel   # rad/s         Earth's rotation rate
-    a = 6356000             # m             Earth radius (alternative name for Re)
 
     # Thermodynamic parameters
-    th_T = 0.85             #               factor for converting theta to temperature in pressure gradient
-    R = 287                 # J/(kg*K)      gas constant for dry air
+    Rd = 287                 # J/(kg*K)      gas constant for dry air
+    kappa = Rd / cp
 
-    # Pressure levels
+    # Parameters in SS09 equations left undefined
     # name      value         units            description
-    ptop = 200              # hPa           tropopause pressure
-    ps = 1000               # hPa           surface pressure
+    ps = 1000  # hPa           -- surface pressure (guess)
+    ptop = 1000-H/100  # hPa           -- tropopause pressure (guess)
+
+    # converting vertically averaged theta to temperature for pressure term
+    # See Appendix C in Eusebi et al. (2026)
+    C_theta = (ps**kappa - ptop**kappa) / (kappa * ps**kappa)
     
     # Parameters for time-stepping scheme (empirical choices for stable performance)
     # name      value         units            description
@@ -186,7 +188,7 @@ def run_hadley(args):
         # CALCULATE V-TENDENCIES
         fvcorl = omega*sin(yv)*((uext[:-1]+uext[1:])/2 - (usurfext[:-1]+usurfext[1:])/2)  # Coriolis force (thermal wind)
         
-        fvpgrad = 0.5/Re*R*dyi*th_T*(thext[1:]-thext[:-1])*np.log(ptop/ps)  # pressure gradient force
+        fvpgrad = -1/Re * Rd * C_theta * dyi*(thext[1:]-thext[:-1])
         
         utemp_sq = (uext[:-1]**2+uext[1:]**2 - usurfext[:-1]**2+usurfext[1:]**2)/2  # momentum squared difference
         fvmetric = tan(yv)/Re/2*utemp_sq  # metric terms
