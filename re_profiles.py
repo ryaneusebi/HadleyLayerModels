@@ -2,7 +2,7 @@
 Radiative Equilibrium (RE) Temperature Profiles
 
 The functions in this module compute the RE potential temperature profile as a function of latitude
-and pressure level according to Eqs. (2-4) of Eusebi et al. (2026). The profiles are used 
+and pressure level according to Eqs. (2-4) of Eusebi and Schneider (2026). The profiles are used 
 to study Hadley circulation and tropical atmospheric dynamics. The profiles are calculated to have
 a constant globally averaged RE surface temperature specified by tavg.
 
@@ -10,7 +10,10 @@ The surface temperature profile follow the form:
 T = tavg - dh*(sin²(φ) - 2*sin(φ0)*sin(φ) - 1/3)
 
 References:
-- Eusebi et al. (2026)
+- Eusebi and Schneider (2026)
+
+Author: Ryan Eusebi
+Date: 03/02/2026
 """
 
 import numpy as np
