@@ -345,7 +345,7 @@ def axisymm_hadley_2_layer(epsu, epsu_surf, taus, tauf, delz, delh, delta, H, om
             omega * (2*pi/86400) rad/s (1 = Earth value).
     """
     ### Set phi0 array to calculate Hadley circulations for
-    phi0s = np.array([0, 20]) 
+    phi0s = np.array([0, 10, 20]) 
 
     ngu = 800               # number of grid points for u and theta
     ngv = ngu + 1           # number of grid points for v
@@ -374,8 +374,8 @@ def axisymm_hadley_2_layer(epsu, epsu_surf, taus, tauf, delz, delh, delta, H, om
     ds['psi'] = psi
     ds['heatflux'] = heatflux
 
-    # Add code to save data to netcdf file or plot figures if desired
-    ds.to_netcdf("/resnick/groups/esm/reusebi/HadleyLayerModels/test_2layer.nc")
+    # Add code here to save data to netcdf file or plot figures if desired
+    
     return ds
 
 

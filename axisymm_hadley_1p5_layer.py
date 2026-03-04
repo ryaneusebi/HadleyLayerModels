@@ -328,7 +328,7 @@ def axisymm_hadley_1p5_layer(epsu, taus, tauf, delz, delh, delta, H, omega_rel):
    """
 
    ### Set phi0 array to calculate Hadley circulations for
-   phi0s = np.array([0, 20])
+   phi0s = np.array([0, 10, 20])
 
    ### Loop over phi0 values
    # done with multiprocessing to speed up calculation
@@ -348,8 +348,8 @@ def axisymm_hadley_1p5_layer(epsu, taus, tauf, delz, delh, delta, H, omega_rel):
    ds['psi'] = psi
    ds['heatflux'] = heatflux
 
-   # Add code to save data to netcdf file or plot figuresif desired
-   ds.to_netcdf("/resnick/groups/esm/reusebi/HadleyLayerModels/test.nc")
+   # Add code here to save data to netcdf file or plot figures if desired
+
    return ds
 
 # Example run script:
