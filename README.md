@@ -5,6 +5,7 @@ This github repository contains code for several simple idealized models for the
 The models featured are listed here, along with the filename associated with the code for each model, and described further in the subheaders below:
 - A 1.5-layer axisymmetric model of the Hadley cell (axisymm_hadley_1p5_layer.py)
 - A 2-layer model of the Hadley cell (axisymm_hadley_2_layer.py)
+- The semi-analytical solution to the 1.5-layer model using the shooting method (axisymm_hadley_1p5_SAS.py)
 
 The files generate outputs in netcdf files using xarray. The netcdf file output has two coordinates: 'lat' and 'phi0'. 'phi0' refers to the latitude of maximum insolation in the radiative equilibrium profile (see Eusebi and Schneider (2026)) and 'lat' refers to the different latitude points within a given simulation and phi0. In each file, the user can set the phi0s they want to calculate Hadley circulation profiles for. By default, the code uses multiprocessing to calculate the profiles for all of these phi0 values at once - the user can change this if they do not wish to use multiprocessing. The user can specify different planetary climate variables, such as rotation rate, via the inputs as discussed in the files.
 
