@@ -1,10 +1,16 @@
 """
 This module calculates a semi-analytical solution to the 1.5-layer model
 of the Hadley circulation using the shooting method throughout the
-ascending branch, as described in Eusebi and Schneider (2026).
+ascending branch, as described in Eusebi and Schneider (2026). Note that 
+the optimizer is sensitive to initial conditions for a given phi0. The z
+array in the conserve_energy function contains the errors on the 4 constraints
+imposed to obtain the solution (conservation of energy in each cell and 
+continuity of temperature at the Hadley cell edges). The optimizer has typically 
+found an appropriate solution when the first two values in z are less than
+1e-16 and the final two values are less than 1e-13.
 """
 
-
+# Imports
 from scipy.optimize import fsolve
 import numpy as np
 from numpy import sin, cos
@@ -15,9 +21,7 @@ import xarray as xr
 from re_profiles import re_multi_plevel
 from scipy.interpolate import interp1d
 
-"""
-Constants
-"""
+# Constants
 drad = np.pi/180
 Rd = 287 # Specific gas constant for dry air in J/kg/K
 cp = 1005 # Specific heat capacity at constant pressure for dry air in J/kg/K
@@ -261,7 +265,6 @@ def conserve_energy(x, tau, C_theta, omega, a, rce_func, rce_args):
    z2 = quad(calc_heating_rate, phi_s, phi_a, args=(theta, tau, rce_func, rce_args), epsrel=1e-16)[0]
    z3, z4 = edge_continuity(phi_s, phi_n, theta, rce_func, rce_args)
    z = np.array([z1, z2, z3, z4])
-   print(z)
    
    return z
 
@@ -358,8 +361,6 @@ def hadley_solver(phi0, dh, dp, dz, C_theta, omega_factor=1, taus='const', rce_f
    heat_flux_cos = heat_flux_cos * (dp/g*a*2*np.pi*a) * cp
    mass_flux_cos = -heat_flux_cos / dz / cp
 
-   print(f"phi0={np.degrees(phi0)}: ", np.degrees(phi_a), np.degrees(phi_n), np.degrees(phi_s), theta_a)
-
    # Construct dataset with circulation profiles and variables
    phi = np.degrees(phi)
    u = xr.DataArray(u, dims=['lat'], coords = {'lat':phi}).rename('u')
@@ -395,7 +396,6 @@ def get_phi0_var(dh, dp, dz, tau, omega_factor=1):
    phi0s = np.array([0,10,20])
    ds = []
    for i, phi0 in enumerate(np.radians(phi0s)):
-      print(phi0)
       phi = np.linspace(-90, 90, 1001)*drad
 
       # Get theta3 profile for given value of phi0
@@ -415,7 +415,6 @@ def get_phi0_var(dh, dp, dz, tau, omega_factor=1):
    # ds.to_netcdf()
 
    return ds
-
     
 
 if __name__ == '__main__':
