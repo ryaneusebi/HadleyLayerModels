@@ -1,3 +1,10 @@
+"""
+This module calculates a semi-analytical solution to the 1.5-layer model
+of the Hadley circulation using the shooting method throughout the
+ascending branch, as described in Eusebi and Schneider (2026).
+"""
+
+
 from scipy.optimize import fsolve
 import numpy as np
 from numpy import sin, cos
@@ -8,10 +15,13 @@ import xarray as xr
 from re_profiles import re_multi_plevel
 from scipy.interpolate import interp1d
 
-# convert from degrees to radians
+"""
+Constants
+"""
 drad = np.pi/180
 Rd = 287 # Specific gas constant for dry air in J/kg/K
 cp = 1005 # Specific heat capacity at constant pressure for dry air in J/kg/K
+g = 9.81 # Acceleration due to gravity in m/s^2
 
 
 def get_vma_dtheta(M, phi, C_theta,omega, a):
@@ -112,12 +122,13 @@ def get_SAS_theta(thetae, phi_m, thetam, dphi, C_theta, omega, a, rce_func=None)
    theta = phi*0
    M = phi*0
    heat_int = phi*0
+
    # initialize theta and M at phi_m
    theta[i_init] = thetam
    M[i_init] = omega*a**2*cos(phi_m)**2
    heat_int[i_init] = (thetae[i_init] - theta[i_init])*cos(phi[i_init])
 
-   # Do region to the north of phi_m:
+   # Apply shooting method to region north of phi_m:
    for i in range(i_init, i_max-1):      
       dtheta = get_vma_dtheta(M[i], phi[i], C_theta, omega, a)
       theta[i+1] = theta[i] + dtheta*dphi
@@ -126,12 +137,14 @@ def get_SAS_theta(thetae, phi_m, thetam, dphi, C_theta, omega, a, rce_func=None)
       Mp = omega*a**2*cos(phi[i+1])**2
       M[i+1] = (M[i]*heat_int[i] + Mp*heat)/heat_int[i+1]
 
+      # Once poleward of phi_b, use AMC theta profile for rest of circulation
+      # Will later correct profile poleward of phi_s, phi_n to RCE profile
       if theta[i+1] > thetae[i+1]:
          theta[i+2:] = get_theta_from_M(M[i+1], theta[i+1], phi[i+2:], phi[i+1], C_theta, omega, a)
          M[i+2:] = M[i+1]
          break
 
-   # Do region to the south of phi_m
+   # Apply shooting method to region south of phi_m
    for i in range(i_init, i_min+1, -1):
       dtheta = get_vma_dtheta(M[i], phi[i], C_theta, omega, a)
       theta[i-1] = theta[i] - dtheta*dphi
@@ -140,6 +153,8 @@ def get_SAS_theta(thetae, phi_m, thetam, dphi, C_theta, omega, a, rce_func=None)
       Mp = omega*a**2*cos(phi[i-1])**2
       M[i-1] = (M[i]*heat_int[i] + Mp*heat)/heat_int[i-1]
 
+      # Once poleward of phi_b, use AMC theta profile for rest of circulation
+      # Will later correct profile poleward of phi_s, phi_n to RCE profile
       if theta[i-1] > thetae[i-1]:
          theta[:i-1] = get_theta_from_M(M[i-1], theta[i-1], phi[:i-1], phi[i-1], C_theta, omega, a)
          M[:i-1] = M[i-1]
@@ -155,6 +170,18 @@ def get_SAS_theta(thetae, phi_m, thetam, dphi, C_theta, omega, a, rce_func=None)
 
 
 def calc_heating_rate(phi, theta, tau, rce_func, rce_args):
+   """
+   Calculate vertically and zonally averaged heating rate at 
+   latitude phi given theta profile and RCE profile
+   Inputs:
+      phi: latitude in radians
+      theta: xarray DataArray with theta profile in K
+      tau: function returning tau in seconds at latitude phi
+      rce_func: function returning RCE profile of theta in K at latitude phi
+      rce_args: tuple of arguments to pass to rce_func (could be None)
+   Outputs:
+      Q: heating rate in K/s
+   """
    th_equil = rce_func(phi, *rce_args)
    th = theta(phi)
    Q = (th_equil - th)*cos(phi)/tau(phi)
@@ -169,21 +196,27 @@ def edge_continuity(phi_s, phi_n, theta, rce_func, rce_args):
 
    return amc_pot_se - th_equil_se, amc_pot_ne - th_equil_ne
 
-def rce(phi, th00, dh, phi0):
-   return th00 - dh*(sin(phi)**2-2*sin(phi)*sin(phi0))
 
-
-# Different functional forms of tau
-
-# Meridionall constant tau, default 50 day timescale
 def tau_const(taus=50):
+   """
+   Calculate constant tau profile
+   Inputs:
+      taus: radiative relaxation timescale in days, default 50 days
+   Outputs:
+      tau: function of latitude returning tau in seconds
+   """
    def tau(phi):
       return taus*86400
    return tau
 
-# Meridionalally varying tau, 7 days near phi0 and 50 days away from phi0
-# varies like gaussian with width 20 degrees
 def tau_gauss(phi0):
+   """
+   Calculate Gaussian tau profile with std 20 degrees and maximum at phi0
+   Inputs:
+      phi0: latitude of maximum tau in radians
+   Outputs:
+      tau: function of latitude returning tau in seconds
+   """
    def tau(phi):
       tau_w = np.exp(-(phi-phi0)**2/(2*np.radians(20)**2)) 
       tau = tau_w*7 + (1-tau_w)*50
@@ -197,6 +230,21 @@ def tau_gauss(phi0):
 # Hadley cell edges.
 # Returns array with quantified deviations of each of these 4 constraints
 def conserve_energy(x, tau, C_theta, omega, a, rce_func, rce_args):
+   """
+   Calculate deviations from energy conservation within each Hadley cell
+   and ensure continuity of temperature profile with RCE profile at
+   Hadley cell edges.
+   Inputs:
+      x: array of initial conditions [phi_a, phi_n, phi_s, theta_a]
+      tau: function returning tau in seconds at latitude phi
+      C_theta: theta conversion factor for vertically integrated theta
+      omega: planetary rotation rate in rad/s
+      a: Earth's radius in m
+      rce_func: function returning RCE profile of theta in K at latitude phi
+      rce_args: tuple of arguments to pass to rce_func (could be None)
+   Outputs:
+      z: array of deviations from energy conservation and theta continuity
+   """
    phi_a, phi_n, phi_s, theta_a = x
 
    dphi = np.radians(0.005)
@@ -219,7 +267,23 @@ def conserve_energy(x, tau, C_theta, omega, a, rce_func, rce_args):
 
 
 def hadley_solver(phi0, dh, dp, dz, C_theta, omega_factor=1, taus='const', rce_func=None, rce_args=None):
-   g = 9.81 # Acceleration due to gravity in m/s^2
+   """
+   Calculate the semi-analytical solution to the 1.5-layer model of the Hadley circulation for 
+   a given phi0. Solution optimizer is sensitive to initial conditions.
+   Inputs:
+      phi0: latitude of maximum RCE theta in radians
+      dh: surface RE theta difference between equator and pole in K
+      dp: pressure thickness of troposphere in Pa
+      dz: potential temperature difference between lower and upper layers in K
+      C_theta: theta conversion factor for vertically integrated theta
+      omega_factor: factor by which to multiply Earth's rotation rate (default 1)
+      taus: code for functional form of tau: 'const' for constant tau (default), 'gauss' for Gaussian tau
+      rce_func: function returning RCE profile of theta in K at latitude phi
+      rce_args: tuple of arguments to pass to rce_func (could be None)
+   Outputs:
+      ds: xarray Dataset with various circulation details
+   """
+   
    th0 = 290 # Initial guess of theta at phi_a
    a = 6.371e6 # Earth's radius in m
 
@@ -259,13 +323,12 @@ def hadley_solver(phi0, dh, dp, dz, C_theta, omega_factor=1, taus='const', rce_f
    x0 = [phi_a, phi_n, phi_s, th0]
    x = fsolve(conserve_energy, x0, args=(tau, C_theta, omega, a, rce_func, rce_args), epsfcn=1e-10, xtol=1e-16)
    phi_a, phi_n, phi_s, theta_a = x    
-   print('RESULT: ', np.degrees(phi_a), np.degrees(phi_n), np.degrees(phi_s), theta_a) 
+   print(f'RESULT for phi0={np.round(np.degrees(phi0),1)}: ', np.degrees(phi_a), np.degrees(phi_n), np.degrees(phi_s), theta_a) 
 
 
    # Get and save final profile outputs
    phi = np.linspace(-89, 89, 501)*drad
    dphi = np.radians(0.01)
-   print(rce_func)
    theta, M, heating_rate = get_SAS_theta(None, phi_a, theta_a, dphi, C_theta, omega, a, rce_func)
    
    theta = theta.interp(lat=phi).assign_coords(lat=np.degrees(phi))
@@ -297,6 +360,7 @@ def hadley_solver(phi0, dh, dp, dz, C_theta, omega_factor=1, taus='const', rce_f
 
    print(f"phi0={np.degrees(phi0)}: ", np.degrees(phi_a), np.degrees(phi_n), np.degrees(phi_s), theta_a)
 
+   # Construct dataset with circulation profiles and variables
    phi = np.degrees(phi)
    u = xr.DataArray(u, dims=['lat'], coords = {'lat':phi}).rename('u')
    theta = xr.DataArray(theta, dims=['lat'], coords = {'lat':phi}).rename('theta')
@@ -312,6 +376,18 @@ def hadley_solver(phi0, dh, dp, dz, C_theta, omega_factor=1, taus='const', rce_f
    return ds
 
 def get_phi0_var(dh, dp, dz, tau, omega_factor=1):
+   """
+   Calculate the semi-analytical solution to the 1.5-layer model of the Hadley circulation for 
+   a range of phi0 values.
+   Inputs:
+      dh: surface RE theta difference between equator and pole in K
+      dp: pressure thickness of troposphere in Pa
+      dz: potential temperature difference between lower and upper layers in K
+      tau: code for functional form of tau: 'const' for constant tau (default), 'gauss' for Gaussian tau
+      omega_factor: factor by which to multiply Earth's rotation rate (default 1)
+   Outputs:
+      ds: xarray Dataset with various circulation details for each phi0
+   """
    ps = 1000 # Surface pressure in hPa
    pt = ps - dp/100 # Tropopause pressure in hPa
    kappa = Rd / cp
@@ -334,9 +410,10 @@ def get_phi0_var(dh, dp, dz, tau, omega_factor=1):
       ds.append(dsi)
 
    ds = xr.concat(ds, dim='phi0')
-   print(ds)
 
-   ds.to_netcdf(f'test_SAS.nc')
+   # Save to netcdf if desired
+   # ds.to_netcdf()
+
    return ds
 
     
